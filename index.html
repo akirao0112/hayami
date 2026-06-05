@@ -184,26 +184,9 @@
     return Math.round((depDate - new Date()) / 60000);
   }
 
-  function parseYahooDate(str) {
-    const y = +str.slice(0,4), mo = +str.slice(4,6)-1, d = +str.slice(6,8);
-    const h = +str.slice(9,11), m = +str.slice(11,13);
-    return new Date(Date.UTC(y, mo, d, h-9, m));
-  }
-
-  function parseRoute(feature) {
-    const route = feature?.Property?.Route;
-    if (!route) return null;
-    const depDate = parseYahooDate(route.Departure);
-    const arrDate = parseYahooDate(route.Arrival);
-    const patterns = route.TransportPattern ?? [];
-    let trainName = '';
-    for (const p of patterns) {
-      if (p.Type === '1' && p.Line?.Train?.Name) {
-        trainName = p.Line.Train.Name;
-        break;
-      }
-    }
-    return { depDate, arrDate, trainName };
+  // Navitime ISO日時 → Date
+  function parseNaviDate(str) {
+    return new Date(str); // "2026-06-05T12:00:00+09:00"
   }
 
   async function fetchRoutes(from, to) {
@@ -213,21 +196,21 @@
     const url = new URL('/api/transit', location.origin);
     url.searchParams.set('from',      from);
     url.searchParams.set('to',        to);
-    url.searchParams.set('via',       '高田馬場');
     url.searchParams.set('departure', depStr);
-    url.searchParams.set('results',   String(FETCH_COUNT));
 
     const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
     const data = await res.json();
 
-    if (data.ResultInfo?.Status && data.ResultInfo.Status !== 200) {
-      throw new Error(`API status ${data.ResultInfo.Status}: ${data.ResultInfo.Description ?? ''}`);
-    }
-
-    return (data.Feature ?? [])
-      .map(parseRoute)
-      .filter(Boolean)
+    return (data.items ?? [])
+      .map(item => ({
+        depDate:   parseNaviDate(item.departure),
+        arrDate:   parseNaviDate(item.arrival),
+        trainName: item.trainName,
+      }))
       .slice(0, SHOW_COUNT);
   }
 
