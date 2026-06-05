@@ -51,14 +51,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: `未対応の駅名: ${from} / ${to}` });
   }
 
-  // 現在時刻 or 指定時刻をISO形式に変換
-  const now = departure ? new Date(
-    departure.slice(0,4), departure.slice(4,6)-1, departure.slice(6,8),
-    departure.slice(9,11), departure.slice(11,13)
-  ) : new Date();
-  const jstOffset = 9 * 60;
-  const jst = new Date(now.getTime() + (jstOffset - now.getTimezoneOffset()) * 60000);
-  const startTime = jst.toISOString().slice(0, 16) + ':00+09:00';
+  // 現在時刻をJST文字列に変換（タイムゾーンなし: "2026-06-05T23:48:00"）
+  const now = new Date();
+  const jstMs = now.getTime() + 9 * 60 * 60 * 1000;
+  const jstDate = new Date(jstMs);
+  const startTime = jstDate.toISOString().slice(0, 19);
 
   const params = new URLSearchParams({
     start:      startCoord,
