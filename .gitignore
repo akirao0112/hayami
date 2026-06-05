@@ -1,4 +1,8 @@
 config.js
 client_id.txt
+.env.local
 .venv/
 pyproject.toml
+uv.lock
+.vercel/
+node_modules/

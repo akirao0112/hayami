@@ -130,23 +130,6 @@
     }
     .error-card a { color: #ffa0a0; }
 
-    /* App ID 未設定バナー */
-    .setup-banner {
-      margin: 0 1.25rem;
-      padding: 0.75rem 1rem;
-      background: #1a1a2a;
-      border: 1px solid #4040a0;
-      border-radius: 10px;
-      font-size: 0.75rem;
-      color: #a0a0e0;
-      line-height: 1.7;
-    }
-    .setup-banner a { color: #8080ff; }
-    .setup-banner code {
-      background: #0f0f1f; border-radius: 3px;
-      padding: 1px 5px; font-size: 0.7rem;
-    }
-
     footer {
       padding: 0.6rem 1.25rem 1rem;
       display: flex; justify-content: space-between;
@@ -188,23 +171,10 @@
     <a id="yahoo-link" href="#" target="_blank">Yahoo!で確認 →</a>
   </footer>
 
-  <script src="config.js"></script>
   <script>
-  // ══════════════════════════════════════════════
-  //  ★ 設定 — Yahoo! Japan デベロッパーネットワークで
-  //    取得した Application ID をここに貼り付ける
-  //    https://developer.yahoo.co.jp/
-  // ══════════════════════════════════════════════
-  // YAHOO_APP_ID は config.js で定義（.gitignore 対象）
-
-  // 取得件数（表示は3本、余裕を持って5件取得）
   const FETCH_COUNT = 5;
   const SHOW_COUNT  = 3;
-
-  // リフレッシュ間隔（ミリ秒）
-  const REFRESH_MS = 60_000; // 1分ごとに再取得
-
-  // ─────────────────────────────────────────────
+  const REFRESH_MS  = 60_000;
 
   const pad = n => String(n).padStart(2, '0');
 
@@ -214,51 +184,38 @@
     return Math.round((depDate - new Date()) / 60000);
   }
 
-  // Yahoo Transit API の日時形式 → Date
   function parseYahooDate(str) {
-    // 例: "20260605T143800+0900"
     const y = +str.slice(0,4), mo = +str.slice(4,6)-1, d = +str.slice(6,8);
     const h = +str.slice(9,11), m = +str.slice(11,13);
-    // JST固定
     return new Date(Date.UTC(y, mo, d, h-9, m));
   }
 
-  // Feature の Property.Route から必要情報を抽出
   function parseRoute(feature) {
     const route = feature?.Property?.Route;
     if (!route) return null;
-
     const depDate = parseYahooDate(route.Departure);
     const arrDate = parseYahooDate(route.Arrival);
-
-    // 最初の乗車区間から列車種別を取る
     const patterns = route.TransportPattern ?? [];
     let trainName = '';
     for (const p of patterns) {
       if (p.Type === '1' && p.Line?.Train?.Name) {
-        trainName = p.Line.Train.Name; // "急行" / "各停" etc.
+        trainName = p.Line.Train.Name;
         break;
       }
     }
-
     return { depDate, arrDate, trainName };
   }
 
   async function fetchRoutes(from, to) {
-    if (!YAHOO_APP_ID) throw new Error('NO_APP_ID');
-
     const dep = new Date();
     const depStr = `${dep.getFullYear()}${pad(dep.getMonth()+1)}${pad(dep.getDate())}T${pad(dep.getHours())}${pad(dep.getMinutes())}00`;
 
-    const url = new URL('https://map.yahooapis.jp/transit/V1/search');
-    url.searchParams.set('appid',     YAHOO_APP_ID);
+    const url = new URL('/api/transit', location.origin);
     url.searchParams.set('from',      from);
     url.searchParams.set('to',        to);
     url.searchParams.set('via',       '高田馬場');
     url.searchParams.set('departure', depStr);
     url.searchParams.set('results',   String(FETCH_COUNT));
-    url.searchParams.set('output',    'json');
-    url.searchParams.set('sort',      'time');
 
     const res = await fetch(url.toString());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -307,16 +264,6 @@
       `<div class="error-card">⚠ ${msg}</div>`;
   }
 
-  function showSetupBanner(id) {
-    document.getElementById(id).innerHTML = `
-      <div class="setup-banner">
-        <b>初回設定が必要です</b><br>
-        <a href="https://developer.yahoo.co.jp/start/" target="_blank">Yahoo! デベロッパーネットワーク</a>
-        で無料 App ID を取得し、<br>
-        <code>config.example.js</code> を <code>config.js</code> にコピーして App ID を入力してください。
-      </div>`;
-  }
-
   let currentTab = 'go';
 
   async function loadTab(tab) {
@@ -327,11 +274,6 @@
     const accentColor = isGo ? 'var(--accent-go)' : 'var(--accent-return)';
     const from = isGo ? '東村山' : '渋谷';
     const to   = isGo ? '渋谷'   : '東村山';
-
-    if (!YAHOO_APP_ID) {
-      showSetupBanner(listId);
-      return;
-    }
 
     showLoading(listId, accentColor);
 
@@ -344,14 +286,10 @@
       document.getElementById(listId).innerHTML =
         routes.map((r, i) => cardHTML(r, i, nextClass, arrLabel)).join('');
     } catch (e) {
-      if (e.message === 'NO_APP_ID') {
-        showSetupBanner(listId);
-      } else {
-        showError(listId,
-          `取得失敗: ${e.message}<br>` +
-          `<a href="https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&via=%E9%AB%98%E7%94%B0%E9%A6%AC%E5%A0%B4" target="_blank">Yahoo!で確認する →</a>`
-        );
-      }
+      showError(listId,
+        `取得失敗: ${e.message}<br>` +
+        `<a href="https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&via=%E9%AB%98%E7%94%B0%E9%A6%AC%E5%A0%B4" target="_blank">Yahoo!で確認する →</a>`
+      );
     }
   }
 
