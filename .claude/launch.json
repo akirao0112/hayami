@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hayami",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "/Users/akirao/Desktop/cld-lab/hayami/server.py"],
+      "port": 3456
+    }
+  ]
+}

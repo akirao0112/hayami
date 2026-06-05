@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="hayami">
+  <title>hayami</title>
+  <style>
+    :root {
+      --bg: #0f0f11;
+      --surface: #1a1a1f;
+      --border: #2a2a32;
+      --text: #f0f0f4;
+      --muted: #7a7a8a;
+      --accent-go: #4a9eff;
+      --accent-return: #ff7a4a;
+      --express: #ffd060;
+      --local: #8a8a9a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1rem 1.25rem 0.5rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em; }
+    #clock { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #day-type {
+      margin-left: auto;
+      font-size: 0.7rem; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    }
+
+    .tabs {
+      display: flex;
+      margin: 0.5rem 1.25rem;
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 3px; gap: 3px;
+    }
+    .tab {
+      flex: 1; text-align: center; padding: 0.45rem 0;
+      border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+      border: none; background: transparent;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab.active-go  { background: var(--accent-go);    color: #fff; }
+    .tab.active-ret { background: var(--accent-return); color: #fff; }
+
+    .route-label {
+      padding: 0 1.25rem 0.5rem;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .via-go  { color: var(--accent-go);    font-weight: 600; }
+    .via-ret { color: var(--accent-return); font-weight: 600; }
+
+    .train-list {
+      flex: 1; padding: 0 1.25rem;
+      display: flex; flex-direction: column; gap: 0.6rem;
+    }
+
+    .train-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 0.85rem 1rem;
+      display: grid; grid-template-columns: auto 1fr auto;
+      align-items: center; gap: 0.75rem;
+    }
+    .train-card.is-next-go  { border-color: var(--accent-go); }
+    .train-card.is-next-ret { border-color: var(--accent-return); }
+
+    .depart-block { text-align: right; min-width: 3.5rem; }
+    .depart-time {
+      font-size: 1.7rem; font-weight: 700;
+      font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    .depart-label { font-size: 0.62rem; color: var(--muted); margin-top: 1px; }
+
+    .middle { display: flex; flex-direction: column; gap: 2px; }
+    .train-type { font-size: 0.75rem; font-weight: 700; }
+    .train-type.express { color: var(--express); }
+    .train-type.local   { color: var(--local); }
+    .until-badge { font-size: 0.7rem; color: var(--muted); }
+    .until-badge strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .arrive-block { text-align: right; }
+    .arrive-time { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .arrive-label { font-size: 0.62rem; color: var(--muted); }
+
+    /* ローディング・エラー */
+    .state-msg {
+      padding: 1rem 1.25rem;
+      font-size: 0.8rem; color: var(--muted);
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent-go);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-card {
+      margin: 0 1.25rem;
+      padding: 0.75rem 1rem;
+      background: #2a1010;
+      border: 1px solid #6a2020;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      color: #e08080;
+      line-height: 1.6;
+    }
+    .error-card a { color: #ffa0a0; }
+
+    /* App ID 未設定バナー */
+    .setup-banner {
+      margin: 0 1.25rem;
+      padding: 0.75rem 1rem;
+      background: #1a1a2a;
+      border: 1px solid #4040a0;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      color: #a0a0e0;
+      line-height: 1.7;
+    }
+    .setup-banner a { color: #8080ff; }
+    .setup-banner code {
+      background: #0f0f1f; border-radius: 3px;
+      padding: 1px 5px; font-size: 0.7rem;
+    }
+
+    footer {
+      padding: 0.6rem 1.25rem 1rem;
+      display: flex; justify-content: space-between;
+    }
+    footer a {
+      font-size: 0.7rem; color: var(--muted); text-decoration: none;
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 10px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #tab-return { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>hayami</h1>
+    <span id="clock"></span>
+    <span id="day-type"></span>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active-go"  id="btn-go"  onclick="switchTab('go')">▲ 東村山 → 渋谷</button>
+    <button class="tab"            id="btn-ret" onclick="switchTab('return')">▼ 渋谷 → 東村山</button>
+  </div>
+
+  <div id="tab-go">
+    <p class="route-label">西武新宿線（直通）→ <span class="via-go">高田馬場</span> → 山手線 → 渋谷</p>
+    <div id="list-go" class="train-list"></div>
+  </div>
+
+  <div id="tab-return">
+    <p class="route-label">渋谷 → 山手線 → <span class="via-ret">高田馬場</span> → 西武新宿線 → 東村山</p>
+    <div id="list-ret" class="train-list"></div>
+  </div>
+
+  <footer>
+    <a href="https://seibu.ekitan.com/norikae/pc/T1" target="_blank">公式時刻表 →</a>
+    <a id="yahoo-link" href="#" target="_blank">Yahoo!で確認 →</a>
+  </footer>
+
+  <script src="config.js"></script>
+  <script>
+  // ══════════════════════════════════════════════
+  //  ★ 設定 — Yahoo! Japan デベロッパーネットワークで
+  //    取得した Application ID をここに貼り付ける
+  //    https://developer.yahoo.co.jp/
+  // ══════════════════════════════════════════════
+  // YAHOO_APP_ID は config.js で定義（.gitignore 対象）
+
+  // 取得件数（表示は3本、余裕を持って5件取得）
+  const FETCH_COUNT = 5;
+  const SHOW_COUNT  = 3;
+
+  // リフレッシュ間隔（ミリ秒）
+  const REFRESH_MS = 60_000; // 1分ごとに再取得
+
+  // ─────────────────────────────────────────────
+
+  const pad = n => String(n).padStart(2, '0');
+
+  function fmtTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+  function diffMin(depDate) {
+    return Math.round((depDate - new Date()) / 60000);
+  }
+
+  // Yahoo Transit API の日時形式 → Date
+  function parseYahooDate(str) {
+    // 例: "20260605T143800+0900"
+    const y = +str.slice(0,4), mo = +str.slice(4,6)-1, d = +str.slice(6,8);
+    const h = +str.slice(9,11), m = +str.slice(11,13);
+    // JST固定
+    return new Date(Date.UTC(y, mo, d, h-9, m));
+  }
+
+  // Feature の Property.Route から必要情報を抽出
+  function parseRoute(feature) {
+    const route = feature?.Property?.Route;
+    if (!route) return null;
+
+    const depDate = parseYahooDate(route.Departure);
+    const arrDate = parseYahooDate(route.Arrival);
+
+    // 最初の乗車区間から列車種別を取る
+    const patterns = route.TransportPattern ?? [];
+    let trainName = '';
+    for (const p of patterns) {
+      if (p.Type === '1' && p.Line?.Train?.Name) {
+        trainName = p.Line.Train.Name; // "急行" / "各停" etc.
+        break;
+      }
+    }
+
+    return { depDate, arrDate, trainName };
+  }
+
+  async function fetchRoutes(from, to) {
+    if (!YAHOO_APP_ID) throw new Error('NO_APP_ID');
+
+    const dep = new Date();
+    const depStr = `${dep.getFullYear()}${pad(dep.getMonth()+1)}${pad(dep.getDate())}T${pad(dep.getHours())}${pad(dep.getMinutes())}00`;
+
+    const url = new URL('https://map.yahooapis.jp/transit/V1/search');
+    url.searchParams.set('appid',     YAHOO_APP_ID);
+    url.searchParams.set('from',      from);
+    url.searchParams.set('to',        to);
+    url.searchParams.set('via',       '高田馬場');
+    url.searchParams.set('departure', depStr);
+    url.searchParams.set('results',   String(FETCH_COUNT));
+    url.searchParams.set('output',    'json');
+    url.searchParams.set('sort',      'time');
+
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.ResultInfo?.Status && data.ResultInfo.Status !== 200) {
+      throw new Error(`API status ${data.ResultInfo.Status}: ${data.ResultInfo.Description ?? ''}`);
+    }
+
+    return (data.Feature ?? [])
+      .map(parseRoute)
+      .filter(Boolean)
+      .slice(0, SHOW_COUNT);
+  }
+
+  function cardHTML(route, idx, nextClass, arrLabel) {
+    const diff = diffMin(route.depDate);
+    const diffText = diff <= 0 ? '今すぐ' : `あと <strong>${diff}</strong> 分`;
+    const isExpress = ['急行','特急','準急','通勤急行','通勤準急'].some(t => route.trainName.includes(t));
+    const typeClass = isExpress ? 'express' : 'local';
+    const typeLabel = route.trainName || '—';
+    return `
+      <div class="train-card ${idx === 0 ? nextClass : ''}">
+        <div class="depart-block">
+          <div class="depart-time">${fmtTime(route.depDate)}</div>
+          <div class="depart-label">発</div>
+        </div>
+        <div class="middle">
+          <span class="train-type ${typeClass}">${typeLabel}</span>
+          <span class="until-badge">${diffText}</span>
+        </div>
+        <div class="arrive-block">
+          <div class="arrive-time">${fmtTime(route.arrDate)}</div>
+          <div class="arrive-label">${arrLabel}着</div>
+        </div>
+      </div>`;
+  }
+
+  function showLoading(id, color) {
+    document.getElementById(id).innerHTML =
+      `<div class="state-msg"><div class="spinner" style="border-top-color:${color}"></div>取得中…</div>`;
+  }
+
+  function showError(id, msg) {
+    document.getElementById(id).innerHTML =
+      `<div class="error-card">⚠ ${msg}</div>`;
+  }
+
+  function showSetupBanner(id) {
+    document.getElementById(id).innerHTML = `
+      <div class="setup-banner">
+        <b>初回設定が必要です</b><br>
+        <a href="https://developer.yahoo.co.jp/start/" target="_blank">Yahoo! デベロッパーネットワーク</a>
+        で無料 App ID を取得し、<br>
+        <code>config.example.js</code> を <code>config.js</code> にコピーして App ID を入力してください。
+      </div>`;
+  }
+
+  let currentTab = 'go';
+
+  async function loadTab(tab) {
+    const isGo = tab === 'go';
+    const listId    = isGo ? 'list-go' : 'list-ret';
+    const nextClass = isGo ? 'is-next-go' : 'is-next-ret';
+    const arrLabel  = isGo ? '渋谷' : '東村山';
+    const accentColor = isGo ? 'var(--accent-go)' : 'var(--accent-return)';
+    const from = isGo ? '東村山' : '渋谷';
+    const to   = isGo ? '渋谷'   : '東村山';
+
+    if (!YAHOO_APP_ID) {
+      showSetupBanner(listId);
+      return;
+    }
+
+    showLoading(listId, accentColor);
+
+    try {
+      const routes = await fetchRoutes(from, to);
+      if (!routes.length) {
+        showError(listId, '検索結果が取得できませんでした');
+        return;
+      }
+      document.getElementById(listId).innerHTML =
+        routes.map((r, i) => cardHTML(r, i, nextClass, arrLabel)).join('');
+    } catch (e) {
+      if (e.message === 'NO_APP_ID') {
+        showSetupBanner(listId);
+      } else {
+        showError(listId,
+          `取得失敗: ${e.message}<br>` +
+          `<a href="https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&via=%E9%AB%98%E7%94%B0%E9%A6%AC%E5%A0%B4" target="_blank">Yahoo!で確認する →</a>`
+        );
+      }
+    }
+  }
+
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const day = now.getDay();
+    document.getElementById('day-type').textContent = (day === 0 || day === 6) ? '土休日' : '平日';
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-go').style.display     = tab === 'go'     ? '' : 'none';
+    document.getElementById('tab-return').style.display = tab === 'return' ? '' : 'none';
+    document.getElementById('btn-go').className  = 'tab' + (tab === 'go'     ? ' active-go'  : '');
+    document.getElementById('btn-ret').className = 'tab' + (tab === 'return' ? ' active-ret' : '');
+
+    const base = 'https://transit.yahoo.co.jp/search/result';
+    document.getElementById('yahoo-link').href = tab === 'go'
+      ? `${base}?from=%E6%9D%B1%E6%9D%91%E5%B1%B1&to=%E6%B8%8B%E8%B0%B7&via=%E9%AB%98%E7%94%B0%E9%A6%AC%E5%A0%B4&sort=0&cnt=5&ticket=ic`
+      : `${base}?from=%E6%B8%8B%E8%B0%B7&to=%E6%9D%B1%E6%9D%91%E5%B1%B1&via=%E9%AB%98%E7%94%B0%E9%A6%AC%E5%A0%B4&sort=0&cnt=5&ticket=ic`;
+
+    loadTab(tab);
+  }
+
+  // 起動
+  updateClock();
+  setInterval(updateClock, 1000);
+  switchTab('go');
+
+  // 定期リフレッシュ（現在表示中のタブのみ）
+  setInterval(() => loadTab(currentTab), REFRESH_MS);
+  </script>
+</body>
+</html>
