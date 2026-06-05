@@ -1,21 +1,14 @@
 const https = require('https');
 
-// 駅の座標
+// 駅の座標（東村山は正確な駅座標を使用）
 const STATIONS = {
-  '東村山': '35.754764,139.468658',
-  '渋谷':   '35.658034,139.701636',
+  '東村山': '35.7558,139.4677',
+  '渋谷':   '35.6580,139.7016',
 };
-
-// 経由地（高田馬場）
-const VIA_TAKADANOBABA = '35.712285,139.703726';
 
 function httpsGet(url, headers) {
   return new Promise((resolve, reject) => {
-    const options = {
-      headers,
-      method: 'GET',
-    };
-    https.get(url, options, (res) => {
+    https.get(url, { headers }, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
@@ -24,6 +17,17 @@ function httpsGet(url, headers) {
       });
     }).on('error', reject);
   });
+}
+
+// "2026-06-05T12:21:00+09:00" → "12:21"
+function toHHMM(str) {
+  return str ? str.slice(11, 16) : '--:--';
+}
+
+// "2026-06-05T12:21:00+09:00" → 分(0:00からの経過分)
+function toMinutes(str) {
+  if (!str || str.length < 16) return 0;
+  return parseInt(str.slice(11, 13)) * 60 + parseInt(str.slice(14, 16));
 }
 
 module.exports = async function handler(req, res) {
@@ -40,7 +44,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'RAPID_API_KEY が未設定です' });
   }
 
-  const { from, to, departure } = req.query;
+  const { from, to, limit = '5' } = req.query;
   if (!from || !to) {
     return res.status(400).json({ error: 'from と to は必須です' });
   }
@@ -51,19 +55,21 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: `未対応の駅名: ${from} / ${to}` });
   }
 
-  // 現在時刻をJST文字列に変換（タイムゾーンなし: "2026-06-05T23:48:00"）
+  // 現在のJST時刻（タイムゾーンなし形式でNavitimeに渡す）
   const now = new Date();
   const jstMs = now.getTime() + 9 * 60 * 60 * 1000;
   const jstDate = new Date(jstMs);
-  const startTime = jstDate.toISOString().slice(0, 19);
+  const startTime = jstDate.toISOString().slice(0, 19); // "2026-06-05T12:21:00"
+
+  // 現在のJST分（diff計算用）
+  const nowJstMins = Math.floor(jstMs / 60000) % (24 * 60);
 
   const params = new URLSearchParams({
     start:      startCoord,
     goal:       goalCoord,
-    via_list:   VIA_TAKADANOBABA,
     start_time: startTime,
     term:       '120',
-    limit:      '5',
+    limit,
     datum:      'wgs84',
     coord_unit: 'degree',
   });
@@ -80,27 +86,44 @@ module.exports = async function handler(req, res) {
       return res.status(result.status).json({ error: 'Navitime API error', detail: result.body });
     }
 
-    // items[] から必要な情報だけ抽出して返す
-    const items = (result.body.items ?? []).map(item => {
-      const summary = item.summary ?? {};
-      const sections = item.sections ?? [];
+    // 行き（東村山→渋谷）は小平乗換が必要な国分寺線を除外
+    const filterKodaira = (from === '東村山');
 
-      // 最初の鉄道区間から列車種別を取得
-      let trainName = '';
-      for (const s of sections) {
-        if (s.type === 'move' && s.transport?.type === 'train') {
-          trainName = s.transport.service_name ?? s.transport.name ?? '';
-          break;
+    const items = (result.body.items ?? [])
+      .filter(item => {
+        if (!filterKodaira) return true;
+        return !item.sections?.some(s =>
+          s.type === 'move' && s.transport?.name?.includes('国分寺線')
+        );
+      })
+      .map(item => {
+        const move = item.summary?.move ?? {};
+        const sections = item.sections ?? [];
+
+        // 鉄道区間を探して列車名と発時刻を取得
+        let trainName = '';
+        let depStr = '';
+        for (const s of sections) {
+          if (s.type === 'move' && s.transport) {
+            trainName = s.transport.name ?? '';
+            depStr    = s.from_time ?? '';
+            break;
+          }
         }
-      }
 
-      return {
-        departure: summary.from?.time ?? '',
-        arrival:   summary.to?.time   ?? '',
-        trainName,
-        duration:  summary.move?.time ?? 0,
-      };
-    });
+        const arrStr = move.to_time ?? '';
+        const depMins = toMinutes(depStr);
+        // Bug #1 fix: 過去の便は0クランプ（日付またぎは APIが現在時刻以降を返すため不要）
+        const diff = Math.max(0, depMins - nowJstMins);
+
+        return {
+          depTime:   toHHMM(depStr),
+          arrTime:   toHHMM(arrStr),
+          diff,
+          trainName,
+        };
+      })
+      .slice(0, 3);
 
     return res.status(200).json({ items });
   } catch (err) {

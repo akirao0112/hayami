@@ -178,25 +178,20 @@
 
   const pad = n => String(n).padStart(2, '0');
 
-  function fmtTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-
-  function diffMin(depDate) {
-    return Math.round((depDate - new Date()) / 60000);
-  }
-
-  // Navitime ISO日時 → Date
-  function parseNaviDate(str) {
-    return new Date(str); // "2026-06-05T12:00:00+09:00"
+  // XSS対策: HTML特殊文字をエスケープ
+  function esc(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   async function fetchRoutes(from, to) {
-    const dep = new Date();
-    const depStr = `${dep.getFullYear()}${pad(dep.getMonth()+1)}${pad(dep.getDate())}T${pad(dep.getHours())}${pad(dep.getMinutes())}00`;
-
     const url = new URL('/api/transit', location.origin);
-    url.searchParams.set('from',      from);
-    url.searchParams.set('to',        to);
-    url.searchParams.set('departure', depStr);
+    url.searchParams.set('from',  from);
+    url.searchParams.set('to',    to);
+    url.searchParams.set('limit', String(FETCH_COUNT)); // Bug #2 fix: FETCH_COUNTを使用
 
     const res = await fetch(url.toString());
     if (!res.ok) {
@@ -204,26 +199,18 @@
       throw new Error(err.error ?? `HTTP ${res.status}`);
     }
     const data = await res.json();
-
-    return (data.items ?? [])
-      .map(item => ({
-        depDate:   parseNaviDate(item.departure),
-        arrDate:   parseNaviDate(item.arrival),
-        trainName: item.trainName,
-      }))
-      .slice(0, SHOW_COUNT);
+    return (data.items ?? []).slice(0, SHOW_COUNT);
   }
 
   function cardHTML(route, idx, nextClass, arrLabel) {
-    const diff = diffMin(route.depDate);
-    const diffText = diff <= 0 ? '今すぐ' : `あと <strong>${diff}</strong> 分`;
-    const isExpress = ['急行','特急','準急','通勤急行','通勤準急'].some(t => route.trainName.includes(t));
+    const diffText = route.diff <= 0 ? '今すぐ' : `あと <strong>${route.diff}</strong> 分`;
+    const isExpress = ['急行','特急','準急','通勤急行','通勤準急'].some(t => (route.trainName ?? '').includes(t));
     const typeClass = isExpress ? 'express' : 'local';
-    const typeLabel = route.trainName || '—';
+    const typeLabel = esc(route.trainName) || '—';
     return `
       <div class="train-card ${idx === 0 ? nextClass : ''}">
         <div class="depart-block">
-          <div class="depart-time">${fmtTime(route.depDate)}</div>
+          <div class="depart-time">${route.depTime}</div>
           <div class="depart-label">発</div>
         </div>
         <div class="middle">
@@ -231,7 +218,7 @@
           <span class="until-badge">${diffText}</span>
         </div>
         <div class="arrive-block">
-          <div class="arrive-time">${fmtTime(route.arrDate)}</div>
+          <div class="arrive-time">${route.arrTime}</div>
           <div class="arrive-label">${arrLabel}着</div>
         </div>
       </div>`;
